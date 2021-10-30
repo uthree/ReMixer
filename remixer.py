@@ -98,7 +98,7 @@ class Patch2Image(nn.Module):
 class ReMixerImageClassificator(nn.Module):
     """Some Information about RemixerImageClassificator"""
     def __init__(self, channels=3, image_size=256, patch_size=16, classes=10, dim=512, num_layers=12, activation='gelu'):
-        super(RemixerImageClassificator, self).__init__()
+        super(ReMixerImageClassificator, self).__init__()
         self.image2patch = Image2Patch(channels, image_size, patch_size)
         num_patch = (image_size // patch_size) ** 2
         dim_patch = patch_size ** 2 * channels
