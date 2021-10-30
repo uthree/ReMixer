@@ -24,10 +24,10 @@ class ElementWiseMLP(nn.Module):
         x = self.fc2(x)
         return x
 
-class MixierMLP(nn.Module):
-    """Some Information about MixierMLP"""
+class MixerMLP(nn.Module):
+    """Some Information about MixerMLP"""
     def __init__(self, dim, activation='gelu'):
-        super(MixierMLP, self).__init__()
+        super(MixerMLP, self).__init__()
         if activation == 'gelu':
             self.activation = nn.GELU()
         elif activation == 'relu':
@@ -44,11 +44,13 @@ class MixierMLP(nn.Module):
         x = x.swapaxes(1, 2)
         return x
 
-class ReMixier(nn.Module):
-    """Some Information about ReMixier"""
+# input: [batch_size, seq_len, dim]
+# output: [batch_size, seq_len, dim]
+class ReMixer(nn.Module):
+    """Some Information about ReMixer"""
     def __init__(self, num_patch, dim, activation='gelu', num_layers=1):
-        super(ReMixier, self).__init__()
-        self.sequenece = rv.ReversibleSequence(nn.ModuleList([rv.ReversibleBlock(MixierMLP(num_patch, activation), ElementWiseMLP(dim, activation), split_along_dim=2) for _ in range(num_layers)]))
+        super(ReMixer, self).__init__()
+        self.sequenece = rv.ReversibleSequence(nn.ModuleList([rv.ReversibleBlock(MixerMLP(num_patch, activation), ElementWiseMLP(dim, activation), split_along_dim=2) for _ in range(num_layers)]))
     def forward(self, x):
         x = torch.repeat_interleave(x, repeats=2, dim=2)
         x = self.sequenece(x)
@@ -91,24 +93,25 @@ class Patch2Image(nn.Module):
         x = F.fold(x, output_size=self.image_size, kernel_size=self.patch_size, stride=self.patch_size)
         return x
 
-class RemixierImageClassificator(nn.Module):
-    """Some Information about RemixierImageClassificator"""
+# input: [batch_size, channels, height, width]
+# output: [batch_size, classes]
+class RemixerImageClassificator(nn.Module):
+    """Some Information about RemixerImageClassificator"""
     def __init__(self, channels=3, image_size=256, patch_size=16, classes=10, dim=512, num_layers=12, activation='gelu'):
-        super(RemixierImageClassificator, self).__init__()
+        super(RemixerImageClassificator, self).__init__()
         self.image2patch = Image2Patch(channels, image_size, patch_size)
         num_patch = (image_size // patch_size) ** 2
         dim_patch = patch_size ** 2 * channels
         self.embedding = nn.Linear(dim_patch, dim)
-        self.remixier = ReMixier(num_patch, dim, activation, num_layers)
+        self.remixer = ReMixer(num_patch, dim, activation, num_layers)
         self.gap = nn.AdaptiveAvgPool1d(1)
         self.dim2class = nn.Linear(dim, classes)
     def forward(self, x):
         x = self.image2patch(x)
         x = self.embedding(x)
-        x = self.remixier(x)
+        x = self.remixer(x)
         x = x.permute(0, 2, 1)
         x = self.gap(x)
         x = x.squeeze(2)
         x = self.dim2class(x)
         return x
-
