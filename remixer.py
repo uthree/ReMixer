@@ -148,9 +148,3 @@ class ReMixerImageGenerator(nn.Module):
         x = self.patch2image(x)
         x = self.sigmoid(x)
         return x
-
-
-model = ReMixerImageGenerator(feature_dim=512, channels=3, image_size=256, patch_size=16, dim=512, num_layers=12, activation='gelu')
-input = torch.randn(1, 512)
-output = model(input)
-print(output.shape)
