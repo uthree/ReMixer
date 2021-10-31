@@ -58,6 +58,8 @@ class ReMixer(nn.Module):
         x = (x1 + x2) / 2
         return x
 
+# input: [batch_size, channels, height, weight]
+# output: [batch_size, seq_len, patch_dim]
 class Image2Patch(nn.Module):
     """Some Information about Image2Patch"""
     def __init__(self, channels, image_size, patch_size):
@@ -76,6 +78,8 @@ class Image2Patch(nn.Module):
         x = x.swapaxes(1, 2)
         return x
 
+# input: [batch_size, seq_len, patch_dim]
+# output: [batch_size, channels, H, W]
 class Patch2Image(nn.Module):
     """Some Information about Patch2Image"""
     def __init__(self, channels, image_size, patch_size):
@@ -93,6 +97,7 @@ class Patch2Image(nn.Module):
         x = F.fold(x, output_size=self.image_size, kernel_size=self.patch_size, stride=self.patch_size)
         return x
 
+# this module Only supports square images.
 # input: [batch_size, channels, height, width]
 # output: [batch_size, classes]
 class ReMixerImageClassificator(nn.Module):
@@ -115,3 +120,37 @@ class ReMixerImageClassificator(nn.Module):
         x = x.squeeze(2)
         x = self.dim2class(x)
         return x
+
+# this module Only supports square images.
+# input: [batch_size, feature_dim]
+# output: [batch_size, channels, height, width]
+class ReMixerImageGenerator(nn.Module):
+    """Some Information about ReMixerImageGenerator"""
+    def __init__(self, feature_dim=1024, channels=3, image_size=256, patch_size=16, dim=512, num_layers=12, activation='gelu'):
+        super(ReMixerImageGenerator, self).__init__()
+        self.num_patch = (image_size // patch_size) ** 2
+        self.dim_mixer = dim
+        self.positional_embedding = nn.Parameter(torch.randn(self.num_patch,dim))
+        self.feature2patch = nn.Linear(feature_dim, dim)
+        self.remixer = ReMixer(self.num_patch, dim, activation, num_layers)
+        self.to_channels = nn.Linear(dim, channels * patch_size ** 2)
+        self.gelu = nn.GELU()
+        self.patch2image = Patch2Image(channels, image_size, patch_size)
+        self.sigmoid = nn.Sigmoid()
+    def forward(self, x):
+        x = self.feature2patch(x)
+        x = torch.repeat_interleave(x, self.num_patch, dim=1)
+        x = x.reshape(x.shape[0], self.num_patch, self.dim_mixer)
+        x = x + self.positional_embedding
+        x = self.remixer(x)
+        x = self.to_channels(x)
+        x = self.gelu(x)
+        x = self.patch2image(x)
+        x = self.sigmoid(x)
+        return x
+
+
+model = ReMixerImageGenerator(feature_dim=512, channels=3, image_size=256, patch_size=16, dim=512, num_layers=12, activation='gelu')
+input = torch.randn(1, 512)
+output = model(input)
+print(output.shape)
