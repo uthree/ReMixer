@@ -134,7 +134,6 @@ class ReMixerImageGenerator(nn.Module):
         self.feature2patch = nn.Linear(feature_dim, dim)
         self.remixer = ReMixer(self.num_patch, dim, activation, num_layers)
         self.to_channels = nn.Linear(dim, channels * patch_size ** 2)
-        self.gelu = nn.GELU()
         self.patch2image = Patch2Image(channels, image_size, patch_size)
         self.sigmoid = nn.Sigmoid()
     def forward(self, x):
@@ -144,7 +143,6 @@ class ReMixerImageGenerator(nn.Module):
         x = x + self.positional_embedding
         x = self.remixer(x)
         x = self.to_channels(x)
-        x = self.gelu(x)
         x = self.patch2image(x)
         x = self.sigmoid(x)
         return x
