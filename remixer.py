@@ -79,7 +79,7 @@ class Image2Patch(nn.Module):
         return x
 
 # input: [batch_size, seq_len, patch_dim]
-# output: [batch_size, channels, H, W]
+# output: [batch_size, channels, Height, Width]
 class Patch2Image(nn.Module):
     """Some Information about Patch2Image"""
     def __init__(self, channels, image_size, patch_size):
@@ -145,4 +145,27 @@ class ReMixerImageGenerator(nn.Module):
         x = self.to_channels(x)
         x = self.patch2image(x)
         x = self.sigmoid(x)
+        return x
+
+
+# this module Only supports square images.
+# input: [batch_size, input_channels, height, width]
+# output: [batch_size, output_channels, height, width]
+class ReMixerImage2Image(nn.Module):
+    """Some Information about ReMixerImage2Image"""
+    def __init__(self, input_channels, output_channels, image_size, patch_size, dim=512, num_layers=12, activation='gelu'):
+        super(ReMixerImage2Image, self).__init__()
+        num_patch = (image_size // patch_size) ** 2
+        self.image2patch = Image2Patch(input_channels, image_size, patch_size)
+        self.embedding = nn.Linear(input_channels * patch_size ** 2, dim)
+        self.remixer = ReMixer(num_patch, dim, activation, num_layers)
+        self.unembedding = nn.Linear(dim, output_channels * patch_size ** 2)
+        self.patch2image = Patch2Image(output_channels, image_size, patch_size)
+    def forward(self, x):
+        x = self.image2patch(x)
+        x = self.embedding(x)
+        x = self.remixer(x)
+        print(x.shape)
+        x = self.unembedding(x)
+        x = self.patch2image(x)
         return x
