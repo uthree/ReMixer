@@ -135,7 +135,6 @@ class ReMixerImageGenerator(nn.Module):
         self.remixer = ReMixer(self.num_patch, dim, activation, num_layers)
         self.to_channels = nn.Linear(dim, channels * patch_size ** 2)
         self.patch2image = Patch2Image(channels, image_size, patch_size)
-        self.sigmoid = nn.Sigmoid()
     def forward(self, x):
         x = self.feature2patch(x)
         x = torch.repeat_interleave(x, self.num_patch, dim=1)
@@ -144,7 +143,6 @@ class ReMixerImageGenerator(nn.Module):
         x = self.remixer(x)
         x = self.to_channels(x)
         x = self.patch2image(x)
-        x = self.sigmoid(x)
         return x
 
 
