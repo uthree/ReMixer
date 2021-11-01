@@ -165,7 +165,6 @@ class ReMixerImage2Image(nn.Module):
         x = self.image2patch(x)
         x = self.embedding(x)
         x = self.remixer(x)
-        print(x.shape)
         x = self.unembedding(x)
         x = self.patch2image(x)
         return x
