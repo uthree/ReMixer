@@ -1,2 +1,2 @@
-# ReMixier
-Reversible MLP-Mixier.
+# ReMixer
+Reversible MLP-Mixer.
