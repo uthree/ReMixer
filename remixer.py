@@ -14,6 +14,8 @@ class ElementWiseMLP(nn.Module):
             self.activation = nn.GELU()
         elif activation == 'relu':
             self.activation = nn.ReLU()
+        elif activation == 'leakyrelu':
+            self.activation = nn.LeakyReLU(0.2)
         self.fc1 = nn.Linear(dim, dim)
         self.fc2 = nn.Linear(dim, dim)
         self.ln = nn.LayerNorm(dim)
@@ -32,6 +34,8 @@ class MixerMLP(nn.Module):
             self.activation = nn.GELU()
         elif activation == 'relu':
             self.activation = nn.ReLU()
+        elif activation == 'leakyrelu':
+            self.activation = nn.LeakyReLU(0.2)
         self.fc1 = nn.Linear(dim, dim)
         self.fc2 = nn.Linear(dim, dim)
         self.ln = nn.LayerNorm(dim)
@@ -57,6 +61,7 @@ class ReMixer(nn.Module):
         x1, x2 = torch.chunk(x, 2, dim=2)
         x = (x1 + x2) / 2
         return x
+
 
 # input: [batch_size, channels, height, weight]
 # output: [batch_size, seq_len, patch_dim]
@@ -166,3 +171,78 @@ class ReMixerImage2Image(nn.Module):
         x = self.unembedding(x)
         x = self.patch2image(x)
         return x
+
+class SpatialShift2d(nn.Module):
+    def __init__(self, channels, padding_mode='replicate'):
+        super(SpatialShift2d, self).__init__()
+        qc = channels // 4
+        self.num_shift_left = qc
+        self.num_shift_right = qc
+        self.num_shift_up = qc
+        self.num_shift_down = channels - qc*3
+        self.padding_mode = padding_mode
+
+    def forward(self,x):
+        # input: [batch_size, channels, height, width]
+        _l, _r, _u, _d = self.num_shift_left, self.num_shift_right, self.num_shift_up, self.num_shift_down
+        x = F.pad(x, (1,1,1,1), self.padding_mode) # pad
+        l, r, u, d = torch.split(x, [_l, _r, _u, _d], dim=1) # split
+        # shift
+        l = l[:, :, 1:-1, 0:-2]
+        r = r[:, :, 1:-1, 2:  ]
+        u = u[:, :, 0:-2, 1:-1]
+        d = d[:, :, 2:  , 1:-1]
+        # concatenate channelwise shifted tensors
+        x = torch.cat([l,r,u,d], dim=1)
+        return x
+
+# Reversible S2-MLP layer stack.
+# input: [batch_size, channels, height, width]
+# output: [batch_size, channels, height, width]
+class ReS2MLP2d(nn.Module):
+    def __init__(self, channels, image_size=[28, 28], activation='gelu', norm='layernorm', num_layers=1, padding_mode='replicate'):
+        super(ReS2MLP2d, self).__init__()
+        if type(image_size) != int:
+            h, w = image_size[0], image_size[1]
+        else:
+            h, w = image_size, image_size
+        # activation module
+        if activation == 'gelu':
+            act = nn.GELU
+        elif activation == 'relu':
+            act = nn.ReLU
+        elif activation == 'leakyrelu':
+            act == nn.LeakyReLU
+
+        if norm == 'layernorm':
+            def norm_init(c, h, w):
+                return nn.LayerNorm([c, h, w])
+        
+        # initialize layer stack
+        self.seq = rv.ReversibleSequence(
+                nn.ModuleList([
+                    rv.ReversibleBlock(
+                        nn.Sequential( # f-block
+                            nn.Conv2d(channels, channels, 1, 1, 0), # Fully-Connected 1
+                            act(),
+                            SpatialShift2d(channels, padding_mode),
+                            nn.Conv2d(channels, channels, 1, 1, 0), # Fully-Connected 2
+                            norm_init(channels,h,w),
+                            ),
+                        nn.Sequential( # g_block
+                            nn.Conv2d(channels, channels, 1, 1, 0), # Fully-Connected 3
+                            act(),
+                            nn.Conv2d(channels, channels, 1, 1, 0), # Fully-Connected 4
+                            norm_init(channels,h,w),
+                            ),
+                        split_along_dim=1 # split channelwise
+                    ) for _ in range(num_layers)]))
+
+    def forward(self, x):
+        x = torch.repeat_interleave(x, repeats=2, dim=1)
+        x = self.seq(x)
+        x1, x2 = torch.chunk(x, 2, dim=1)
+        x = (x1 + x2) / 2
+        return x
+
+
