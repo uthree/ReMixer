@@ -245,8 +245,8 @@ class ReS2MLP2d(nn.Module):
         x = (x1 + x2) / 2
         return x
 
-class SwinReS2MLP(nn.module):
-    def __init__(self, initial_image_size=[64, 64], stages=[3,4,6,3], channels=[16, 32, 64, 128], factor=2, mode='downscale', version=1, activation='gelu', norm='layernorm', padding_mode='replicate', input_channels=None, output_channels=None):
+class SwinReS2MLP(nn.Module):
+    def __init__(self, initial_image_size=[64, 64], stages=[3,4,6,3], channels=[16, 32, 64, 128], factor=2, mode='downscale', version=1, activation='gelu', norm='layernorm', padding_mode='replicate', input_channels=None, output_channels=None, input_dim=None, output_dim=None):
         super(SwinReS2MLP, self).__init__()
         if type(stages) == int:
             stages = [stages]
@@ -258,23 +258,37 @@ class SwinReS2MLP(nn.module):
         else:
             h, w = initial_image_size
         if mode == 'downscale':
-            assert [s % (factor**len(stages)) == 0 for s in initial_image_size].any(), "initial image size must be able to divide by 2^number of stage."
+            assert all([s % (factor**len(stages)) == 0 for s in [h, w]]), f"initial image size({initial_image_size}) must be able to divide by {factor}^{len(stages)} = {factor**len(stages)}"
         
         # initialize layers
-        modules = [nn.Conv2d(input_channels, channels[0], 1, 1, 0) if input_channels else nn.Identity()]
+        modules = []
+        modules.append(
+                nn.Sequential(
+                    nn.Linear(input_dim, channels[0]*h*w),
+                    nn.Unflatten(1, [channels[0],h,w])
+                    ) if input_dim else nn.Identity()) # if given input_dim, start image generation from vector.
+        modules.append(nn.Conv2d(input_channels, channels[0], 1, 1, 0) if input_channels else nn.Identity())
         for i, (nlayers, c) in enumerate(zip(stages, channels)):
-            modules.append(ReS2MLP2d(c, [w, h], activation=activation, norm=norm, padding_mode=padding_mode, num_layers=nlayers))
+            modules.append(ReS2MLP2d(c, [h, w], activation=activation, norm=norm, padding_mode=padding_mode, num_layers=nlayers))
             if i != len(stages)-1:
                 if mode == 'upscale':
                     modules.append(nn.Upsample(scale_factor=factor))
+                    modules.append(nn.Conv2d(channels[i], channels[i+1], 1, 1, 0))
+                    h, w = h * factor, w * factor
                 if mode == 'downscale':
                     modules.append(nn.AvgPool2d(kernel_size=factor))
-        modules = [nn.Conv2d(channels[-1], output_channels, 1, 1, 0) if output_channels else nn.Identity()]
-        self.seq = nn.Seqential(*modules)
+                    modules.append(nn.Conv2d(channels[i], channels[i+1], 1, 1, 0))
+                    h, w = h // factor, w // factor
+        modules.append(nn.Conv2d(channels[-1], output_channels, 1, 1, 0) if output_channels else nn.Identity())
+        modules.append(
+                nn.Sequential(
+                    nn.AvgPool2d(2**(len(stages))),
+                    nn.Flatten(),
+                    nn.Linear(channels[-1], output_dim) # if given output_dim, added pooling and fully-connected finaly.
+                    ) if output_dim else nn.Identity()) 
+        self.seq = nn.Sequential(*modules)
 
     def forward(self, x):
         return self.seq(x)
-
-
 
 
