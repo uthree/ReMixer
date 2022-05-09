@@ -282,7 +282,7 @@ class SwinReS2MLP(nn.Module):
         modules.append(nn.Conv2d(channels[-1], output_channels, 1, 1, 0) if output_channels else nn.Identity())
         modules.append(
                 nn.Sequential(
-                    nn.AvgPool2d(2**(len(stages))),
+                    lambda x: torch.sum(x, [2, 3]),
                     nn.Flatten(),
                     nn.Linear(channels[-1], output_dim) # if given output_dim, added pooling and fully-connected finaly.
                     ) if output_dim else nn.Identity()) 
