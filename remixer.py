@@ -258,7 +258,7 @@ class SwinReS2MLP(nn.Module):
         else:
             h, w = initial_image_size
         if mode == 'downscale':
-            assert all([s % (factor**len(stages)) == 0 for s in [h, w]]), f"initial image size({initial_image_size}) must be able to divide by {factor}^{len(stages)} = {factor**len(stages)}"
+            assert all([s % (factor**(len(stages)-1)) == 0 for s in [h, w]]), f"initial image size({initial_image_size}) must be able to divide by {factor}^{len(stages)} = {factor**len(stages)}"
         
         # initialize layers
         modules = []
