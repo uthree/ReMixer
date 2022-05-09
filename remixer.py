@@ -245,4 +245,36 @@ class ReS2MLP2d(nn.Module):
         x = (x1 + x2) / 2
         return x
 
+class SwinReS2MLP(nn.module):
+    def __init__(self, initial_image_size=[64, 64], stages=[3,4,6,3], channels=[16, 32, 64, 128], factor=2, mode='downscale', version=1, activation='gelu', norm='layernorm', padding_mode='replicate', input_channels=None, output_channels=None):
+        super(SwinReS2MLP, self).__init__()
+        if type(stages) == int:
+            stages = [stages]
+        if type(channels) == int:
+            channels = [channels]
+        assert mode == 'downscale' or mode == 'upscale', 'mode must be \'upscale\' or \'downscale\''
+        if type(initial_image_size) == int:
+            h, w = [initial_image_size, initial_image_size]
+        else:
+            h, w = initial_image_size
+        if mode == 'downscale':
+            assert [s % (factor**len(stages)) == 0 for s in initial_image_size].any(), "initial image size must be able to divide by 2^number of stage."
+        
+        # initialize layers
+        modules = [nn.Conv2d(input_channels, channels[0], 1, 1, 0) if input_channels else nn.Identity()]
+        for i, (nlayers, c) in enumerate(zip(stages, channels)):
+            modules.append(ReS2MLP2d(c, [w, h], activation=activation, norm=norm, padding_mode=padding_mode, num_layers=nlayers))
+            if i != len(stages)-1:
+                if mode == 'upscale':
+                    modules.append(nn.Upsample(scale_factor=factor))
+                if mode == 'downscale':
+                    modules.append(nn.AvgPool2d(kernel_size=factor))
+        modules = [nn.Conv2d(channels[-1], output_channels, 1, 1, 0) if output_channels else nn.Identity()]
+        self.seq = nn.Seqential(*modules)
+
+    def forward(self, x):
+        return self.seq(x)
+
+
+
 
